@@ -1,302 +1,194 @@
+/**
+ * Zoo Fatha World - Arabic Early Learning
+ * Updated strictly to .TXT design requirements
+ */
+
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-function resize() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-}
-window.addEventListener("resize", resize);
-resize();
+// Configuration from .TXT Requirements
+const CONFIG = {
+    letters: ["جَ", "دَ", "سَ", "عَ", "لَ"],
+    sounds: { "جَ": "ja", "دَ": "da", "سَ": "sa", "عَ": "a", "لَ": "la" },
+    worldWidth: 6000,
+    cageSpacing: 900,
+    cameraEasing: 0.05,
+    colors: {
+        highlight: "#FFD54F",
+        glow: "rgba(255, 213, 79, 0.6)",
+        text: "#1a1a1a"
+    }
+};
+
+let state = {
+    cameraX: 0,
+    currentIndex: 0,
+    options: [],
+    target: null,
+    selected: 1,
+    floatingReward: null,
+    rewardTimer: 0,
+    shake: 0,
+    animTime: 0
+};
 
 // =====================
-// WORLD CONFIG (CANDY CRUSH STYLE MAP)
+// ASSET LOADING
 // =====================
-const WORLD_WIDTH = 5000;
-let cameraX = 0;
-
-// =====================
-// LOAD ASSETS
-// =====================
-function load(src) {
-  const img = new Image();
-  img.src = src;
-  return img;
+function loadAsset(path) {
+    const img = new Image();
+    img.src = path;
+    return img;
 }
 
 const assets = {
-  bg: load("assets/zoo-bg.jpg"),
-  cageClosed: load("assets/cage-closed.png"),
-  cageOpen: load("assets/cage-open.png"),
-
-  animals: {
-    lion: load("assets/lion.png"),
-    monkey: load("assets/monkey.png"),
-    bird: load("assets/bird.png"),
-    elephant: load("assets/elephant.png"),
-    turtle: load("assets/turtle.png")
-  }
+    bg: loadAsset("assets/zoo-bg.jpg"),
+    cageClosed: loadAsset("assets/cage-closed.png"),
+    cageOpen: loadAsset("assets/cage-open.png"),
+    animals: {
+        lion: loadAsset("assets/lion.png"),
+        monkey: loadAsset("assets/monkey.png"),
+        bird: loadAsset("assets/bird.png"),
+        elephant: loadAsset("assets/elephant.png"),
+        turtle: loadAsset("assets/turtle.png")
+    }
 };
-
-// =====================
-// LEARNING DATA (FATHA MODE)
-// =====================
-const letters = ["جَ", "دَ", "سَ", "عَ", "لَ"];
-
-const sounds = {
-  "جَ": "ja",
-  "دَ": "da",
-  "سَ": "sa",
-  "عَ": "a",
-  "لَ": "la"
-};
-
-// =====================
-// WORLD OBJECTS (CAGES IN WORLD SPACE)
-// =====================
-const cages = letters.map((l, i) => ({
-  id: i,
-  letter: l,
-  x: 500 + i * 800,
-  y: 350,
-  unlocked: false,
-  shake: 0,
-  reward: null
-}));
-
-let currentIndex = 0;
-let options = [];
-let target = null;
-let selected = 0;
-
-// =====================
-// REWARD STATE
-// =====================
-let floatingReward = null;
-let rewardTimer = 0;
 
 const animalKeys = Object.keys(assets.animals);
 
 // =====================
-// AUDIO (CLEAN, NO SPAM)
+// GAME LOGIC
 // =====================
-function speak(text, mood = "normal") {
-  const msg = new SpeechSynthesisUtterance(text);
-  msg.lang = "ar-SA";
+function initRound() {
+    // Select 3 random syllables for the UI
+    state.options = [...CONFIG.letters].sort(() => Math.random() - 0.5).slice(0, 3);
+    state.target = state.options[Math.floor(Math.random() * state.options.length)];
+    state.selected = 1; // Start center for TV/Remote feel
 
-  msg.rate = mood === "success" ? 0.85 : 0.75;
-  msg.pitch = mood === "success" ? 1.6 : 1.3;
-
-  speechSynthesis.cancel();
-  speechSynthesis.speak(msg);
+    // Single pronunciation per round
+    speak(CONFIG.sounds[state.target]);
 }
 
-// =====================
-// UTIL
-// =====================
-function shuffle(arr) {
-  return arr.sort(() => Math.random() - 0.5);
-}
-
-function randomAnimal() {
-  return animalKeys[Math.floor(Math.random() * animalKeys.length)];
-}
-
-// =====================
-// ROUND
-// =====================
-function nextRound() {
-  options = shuffle([...letters]).slice(0, 3);
-  target = options[Math.floor(Math.random() * options.length)];
-  selected = 0;
-
-  setTimeout(() => {
-    speak(sounds[target]);
-  }, 300);
-}
-
-// =====================
-// CAMERA (CANDY CRUSH FEEL)
-// =====================
-function updateCamera() {
-  const targetX = cages[currentIndex].x - canvas.width / 2;
-  cameraX += (targetX - cameraX) * 0.08;
-}
-
-// =====================
-// INPUT (TV + MOBILE ONLY)
-// =====================
-
-// TV / Keyboard
-window.addEventListener("keydown", (e) => {
-  if (e.key === "ArrowLeft") selected = Math.max(0, selected - 1);
-  if (e.key === "ArrowRight") selected = Math.min(options.length - 1, selected + 1);
-  if (e.key === "Enter" || e.key === " ") check();
-});
-
-// Touch only
-canvas.addEventListener("touchstart", (e) => {
-  const rect = canvas.getBoundingClientRect();
-  const t = e.touches[0];
-
-  const x = t.clientX - rect.left;
-  const y = t.clientY - rect.top;
-
-  const center = canvas.width / 2;
-
-  for (let i = 0; i < options.length; i++) {
-    const ox = center + (i - 1) * 260;
-    const oy = canvas.height * 0.62;
-
-    const dx = x - ox;
-    const dy = y - oy;
-
-    if (Math.sqrt(dx * dx + dy * dy) < 90) {
-      selected = i;
-      check();
-    }
-  }
-});
-
-// =====================
-// CHECK ANSWER
-// =====================
-function check() {
-  const choice = options[selected];
-  if (!choice || !target) return;
-
-  if (choice === target) {
-    speak(sounds[choice], "success");
-
-    const cage = cages[currentIndex];
-
-    cage.unlocked = true;
-    cage.reward = randomAnimal();
-    cage.shake = 20;
-
-    floatingReward = cage.reward;
-    rewardTimer = 80;
-
-    currentIndex++;
-
-    setTimeout(nextRound, 900);
-  } else {
-    speak("try again");
-  }
-}
-
-// =====================
-// DRAW BACKGROUND
-// =====================
-function drawBackground() {
-  if (assets.bg.complete) {
-    ctx.drawImage(assets.bg, -cameraX * 0.2, 0, WORLD_WIDTH, canvas.height);
-  } else {
-    ctx.fillStyle = "#7ec8ff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-  }
-
-  ctx.fillStyle = "rgba(0,0,0,0.18)";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-}
-
-// =====================
-// DRAW CAGES (REAL ASSETS)
-// =====================
-function drawCages() {
-  for (let cage of cages) {
-    const x = cage.x - cameraX;
-    const y = cage.y;
-
-    if (x < -200 || x > canvas.width + 200) continue;
-
-    ctx.save();
-
-    if (cage.shake > 0) {
-      ctx.translate(x + Math.sin(Date.now() * 0.05) * cage.shake, y);
-      cage.shake *= 0.9;
+function checkAnswer() {
+    if (state.options[state.selected] === state.target) {
+        // Success Logic
+        state.floatingReward = animalKeys[Math.floor(Math.random() * animalKeys.length)];
+        state.rewardTimer = 120;
+        state.shake = 15;
+        state.currentIndex++;
+        
+        setTimeout(() => {
+            if (state.currentIndex < 10) initRound(); // Infinite loop for demo
+        }, 1500);
     } else {
-      ctx.translate(x, y);
+        state.shake = 5;
+        speak("Try again");
+    }
+}
+
+function speak(text) {
+    const msg = new SpeechSynthesisUtterance(text);
+    msg.lang = "ar-SA";
+    speechSynthesis.cancel();
+    speechSynthesis.speak(msg);
+}
+
+// =====================
+// RENDERING SYSTEM
+// =====================
+function draw() {
+    state.animTime += 0.05;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // 1. Smooth Camera Easing[cite: 2]
+    const targetCam = (state.currentIndex * CONFIG.cageSpacing) - canvas.width / 2 + 200;
+    state.cameraX += (targetCam - state.cameraX) * CONFIG.cameraEasing;
+
+    // 2. Parallax Background
+    if (assets.bg.complete) {
+        ctx.drawImage(assets.bg, -state.cameraX * 0.3, 0, CONFIG.worldWidth, canvas.height);
     }
 
-    const img = cage.unlocked ? assets.cageOpen : assets.cageClosed;
-
-    if (img.complete) {
-      ctx.drawImage(img, -80, -80, 160, 160);
+    // 3. Draw Cages in World Space[cite: 1, 2]
+    for (let i = 0; i < 10; i++) {
+        const x = (i * CONFIG.cageSpacing) - state.cameraX;
+        const y = canvas.height * 0.45;
+        const isUnlocked = i < state.currentIndex;
+        const img = isUnlocked ? assets.cageOpen : assets.cageClosed;
+        
+        ctx.save();
+        ctx.translate(x, y + Math.sin(state.animTime + i) * 5); // Breathing animation
+        if (i === state.currentIndex && state.shake > 0) {
+            ctx.translate(Math.random() * state.shake, 0);
+            state.shake *= 0.9;
+        }
+        ctx.drawImage(img, -150, -150, 300, 300);
+        ctx.restore();
     }
 
-    ctx.restore();
-  }
+    // 4. Reward Animation (Appear -> Bounce -> Exit)[cite: 2]
+    if (state.rewardTimer > 0 && state.floatingReward) {
+        const animalImg = assets.animals[state.floatingReward];
+        const bounce = Math.abs(Math.sin(state.animTime * 2)) * 50;
+        const opacity = state.rewardTimer / 120;
+        ctx.globalAlpha = opacity;
+        ctx.drawImage(animalImg, canvas.width/2 - 125, canvas.height * 0.2 - bounce, 250, 250);
+        ctx.globalAlpha = 1.0;
+        state.rewardTimer--;
+    }
+
+    // 5. UI Options (Premium Polish)[cite: 2]
+    const uiY = canvas.height * 0.8;
+    state.options.forEach((opt, i) => {
+        const x = (canvas.width / 2) + (i - 1) * 280;
+        const isSel = i === state.selected;
+        const pulse = isSel ? Math.sin(state.animTime * 4) * 10 : 0;
+
+        // Glow selection[cite: 2]
+        if (isSel) {
+            ctx.shadowBlur = 30;
+            ctx.shadowColor = CONFIG.colors.glow;
+        }
+
+        ctx.fillStyle = isSel ? CONFIG.colors.highlight : "white";
+        ctx.beginPath();
+        ctx.roundRect(x - 100, uiY - 75 + pulse, 200, 150, 25);
+        ctx.fill();
+        
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = CONFIG.colors.text;
+        ctx.font = "bold 80px 'Baloo 2', Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(opt, x, uiY + 25 + pulse);
+    });
+
+    requestAnimationFrame(draw);
 }
 
 // =====================
-// OPTIONS UI
+// INPUT HANDLING[cite: 2]
 // =====================
-function drawOptions() {
-  const center = canvas.width / 2;
+window.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowLeft") state.selected = Math.max(0, state.selected - 1);
+    if (e.key === "ArrowRight") state.selected = Math.min(state.options.length - 1, state.selected + 1);
+    if (e.key === "Enter" || e.key === " ") checkAnswer();
+});
 
-  options.forEach((opt, i) => {
-    const x = center + (i - 1) * 260;
-    const y = canvas.height * 0.62;
+canvas.addEventListener("touchstart", (e) => {
+    const touchX = e.touches[0].clientX;
+    const center = canvas.width / 2;
+    if (touchX < center - 140) state.selected = 0;
+    else if (touchX > center + 140) state.selected = 2;
+    else state.selected = 1;
+    checkAnswer();
+});
 
-    const isSel = i === selected;
-
-    ctx.beginPath();
-    ctx.arc(x, y, isSel ? 95 : 75, 0, Math.PI * 2);
-
-    ctx.fillStyle = isSel ? "#FFD54F" : "#fff";
-    ctx.fill();
-
-    ctx.strokeStyle = isSel ? "#ff9800" : "#999";
-    ctx.lineWidth = isSel ? 6 : 2;
-    ctx.stroke();
-
-    ctx.fillStyle = "#1a1a1a";
-    ctx.font = "70px Baloo";
-    ctx.textAlign = "center";
-    ctx.fillText(opt, x, y + 25);
-  });
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
 }
 
-// =====================
-// REWARD ANIMATION (REAL IMAGE)
-// =====================
-function drawReward() {
-  if (rewardTimer <= 0 || !floatingReward) return;
-
-  const img = assets.animals[floatingReward];
-  if (!img || !img.complete) return;
-
-  const bounce = Math.sin(Date.now() * 0.01) * 15;
-
-  ctx.drawImage(
-    img,
-    canvas.width / 2 - 110,
-    canvas.height * 0.2 + bounce,
-    220,
-    220
-  );
-
-  rewardTimer--;
-}
-
-// =====================
-// LOOP
-// =====================
-function loop() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  updateCamera();
-
-  drawBackground();
-  drawCages();
-  drawReward();
-  drawOptions();
-
-  requestAnimationFrame(loop);
-}
-
-// =====================
-// START
-// =====================
-nextRound();
-loop();
+window.addEventListener("resize", resize);
+resize();
+initRound();
+draw();
