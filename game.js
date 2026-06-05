@@ -9,21 +9,23 @@ window.addEventListener("resize", resize);
 resize();
 
 // =====================
-// BACKGROUND
+// BACKGROUND (YOUR ASSET ONLY)
 // =====================
 const bg = new Image();
 bg.src = "assets/zoo-bg.jpg";
 
 // =====================
-// LETTERS (FATHA SET)
+// CORE LETTER SET (FATHA MODE)
 // =====================
-const levels = [
-  { text: "جَ", sound: "ja" },
-  { text: "دَ", sound: "da" },
-  { text: "سَ", sound: "sa" },
-  { text: "عَ", sound: "a" },
-  { text: "لَ", sound: "la" }
-];
+const letters = ["جَ", "دَ", "سَ", "عَ", "لَ"];
+
+const sounds = {
+  "جَ": "ja",
+  "دَ": "da",
+  "سَ": "sa",
+  "عَ": "a",
+  "لَ": "la"
+};
 
 // =====================
 // STATE
@@ -32,16 +34,13 @@ let options = [];
 let target = null;
 let selected = 0;
 
-let cages = [0, 0, 0, 0, 0]; // 0 = locked, 1 = open
+let cages = [0, 0, 0, 0, 0];
 let progress = 0;
 
-let rewardAnimal = null;
+let reward = null;
 let rewardTimer = 0;
 
-// =====================
-// ANIMALS (REWARD SYSTEM)
-// =====================
-const rewardAnimals = ["🦁", "🐒", "🐦", "🐘", "🐢"];
+const rewards = ["lion", "monkey", "bird", "elephant", "turtle"];
 
 // =====================
 // AUDIO
@@ -70,33 +69,65 @@ function shuffle(arr) {
 }
 
 function randomReward() {
-  return rewardAnimals[Math.floor(Math.random() * rewardAnimals.length)];
+  return rewards[Math.floor(Math.random() * rewards.length)];
 }
 
 // =====================
-// ROUND SYSTEM
+// GAME FLOW
 // =====================
 function nextRound() {
-  options = shuffle([...levels]).slice(0, 3);
+  options = shuffle([...letters]).slice(0, 3);
   target = options[Math.floor(Math.random() * options.length)];
   selected = 0;
 
   setTimeout(() => {
-    speak("Listen");
-    setTimeout(() => speak(target.sound), 600);
-  }, 400);
+    speak("listen");
+    setTimeout(() => speak(sounds[target]), 600);
+  }, 300);
 }
 
 // =====================
-// INPUT
+// INPUT (STRICT: TV + MOBILE ONLY)
 // =====================
+
+// TV / Keyboard
 window.addEventListener("keydown", (e) => {
-  if (e.key === "ArrowLeft") selected = Math.max(0, selected - 1);
-  if (e.key === "ArrowRight") selected = Math.min(options.length - 1, selected + 1);
-  if (e.key === " " || e.key === "Enter") check();
+  if (e.key === "ArrowLeft") {
+    selected = Math.max(0, selected - 1);
+  }
+
+  if (e.key === "ArrowRight") {
+    selected = Math.min(options.length - 1, selected + 1);
+  }
+
+  if (e.key === "Enter" || e.key === " ") {
+    check();
+  }
 });
 
-canvas.addEventListener("click", check);
+// Mobile touch ONLY (no mouse logic)
+canvas.addEventListener("touchstart", (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const touch = e.touches[0];
+
+  const x = touch.clientX - rect.left;
+  const y = touch.clientY - rect.top;
+
+  const center = canvas.width / 2;
+
+  for (let i = 0; i < options.length; i++) {
+    const ox = center + (i - 1) * 240;
+    const oy = canvas.height * 0.6;
+
+    const dx = x - ox;
+    const dy = y - oy;
+
+    if (Math.sqrt(dx * dx + dy * dy) < 80) {
+      selected = i;
+      check();
+    }
+  }
+});
 
 // =====================
 // CHECK ANSWER
@@ -105,25 +136,24 @@ function check() {
   const choice = options[selected];
   if (!choice || !target) return;
 
-  if (choice.text === target.text) {
-    speak(choice.sound, "success");
+  if (choice === target) {
+    speak(sounds[choice], "success");
 
-    // unlock cage
     if (progress < cages.length) {
       cages[progress] = 1;
-      rewardAnimal = randomReward();
-      rewardTimer = 80;
+      reward = randomReward();
+      rewardTimer = 70;
       progress++;
     }
 
-    setTimeout(nextRound, 1200);
+    setTimeout(nextRound, 900);
   } else {
     speak("try again");
   }
 }
 
 // =====================
-// DRAW BACKGROUND
+// BACKGROUND
 // =====================
 function drawBackground() {
   if (bg.complete) {
@@ -133,71 +163,83 @@ function drawBackground() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
 
-  ctx.fillStyle = "rgba(0,0,0,0.1)";
+  ctx.fillStyle = "rgba(0,0,0,0.18)";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
 // =====================
-// DRAW OPTIONS
+// OPTIONS UI (PREMIUM SPACING)
 // =====================
 function drawOptions() {
   const center = canvas.width / 2;
 
   options.forEach((opt, i) => {
-    const x = center + (i - 1) * 200;
-    const y = canvas.height * 0.65;
+    const x = center + (i - 1) * 260;
+    const y = canvas.height * 0.6;
+
+    const isSelected = i === selected;
 
     ctx.beginPath();
-    ctx.arc(x, y, i === selected ? 80 : 70, 0, Math.PI * 2);
-    ctx.fillStyle = i === selected ? "#FFD54F" : "#fff";
+    ctx.arc(x, y, isSelected ? 90 : 75, 0, Math.PI * 2);
+
+    ctx.fillStyle = isSelected ? "#FFD54F" : "#ffffff";
     ctx.fill();
 
-    ctx.fillStyle = "#000";
-    ctx.font = "60px Arial";
+    ctx.strokeStyle = isSelected ? "#ff9800" : "#999";
+    ctx.lineWidth = isSelected ? 6 : 2;
+    ctx.stroke();
+
+    ctx.fillStyle = "#1a1a1a";
+    ctx.font = "70px Baloo";
     ctx.textAlign = "center";
-    ctx.fillText(opt.text, x, y + 20);
+    ctx.fillText(opt, x, y + 25);
   });
 }
 
 // =====================
-// DRAW CAGES (REWARD TRACK)
+// CAGES (PROGRESS TRACK)
 // =====================
 function drawCages() {
-  const startX = canvas.width / 2 - 300;
+  const startX = canvas.width / 2 - 320;
   const y = canvas.height * 0.85;
 
   for (let i = 0; i < cages.length; i++) {
-    const x = startX + i * 150;
+    const x = startX + i * 160;
 
-    // cage base
-    ctx.fillStyle = cages[i] ? "#b9f6ca" : "#ddd";
-    ctx.fillRect(x, y, 100, 80);
+    ctx.fillStyle = cages[i] ? "#6EE7B7" : "#D1D5DB";
+    ctx.fillRect(x, y, 110, 80);
 
     ctx.strokeStyle = "#333";
-    ctx.strokeRect(x, y, 100, 80);
+    ctx.strokeRect(x, y, 110, 80);
 
-    // lock icon
-    ctx.fillStyle = "#000";
     ctx.font = "30px Arial";
     ctx.textAlign = "center";
-
-    ctx.fillText(cages[i] ? "🐾" : "🔒", x + 50, y + 50);
+    ctx.fillStyle = "#000";
+    ctx.fillText(cages[i] ? "🐾" : "🔒", x + 55, y + 50);
   }
 }
 
 // =====================
-// DRAW REWARD ANIMAL
+// REWARD ANIMATION
 // =====================
 function drawReward() {
-  if (rewardTimer <= 0 || !rewardAnimal) return;
+  if (rewardTimer <= 0 || !reward) return;
+
+  const icons = {
+    lion: "🦁",
+    monkey: "🐒",
+    bird: "🐦",
+    elephant: "🐘",
+    turtle: "🐢"
+  };
+
+  const bounce = Math.sin(Date.now() * 0.01) * 12;
 
   ctx.font = "120px Arial";
   ctx.textAlign = "center";
 
-  const bounce = Math.sin(Date.now() * 0.01) * 10;
-
   ctx.fillText(
-    rewardAnimal,
+    icons[reward],
     canvas.width / 2,
     canvas.height * 0.25 + bounce
   );
