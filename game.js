@@ -10,21 +10,26 @@ window.addEventListener("resize", () => {
 });
 
 // =====================
-// ASSETS
+// LOAD IMAGES ONCE (IMPORTANT FIX)
 // =====================
-const bg = new Image();
-bg.src = "assets/zoo-bg.jpg";
+function loadImage(src) {
+  const img = new Image();
+  img.src = src;
+  return img;
+}
+
+const bg = loadImage("assets/zoo-bg.jpg");
 
 const animals = {
-  lion: "assets/lion.png",
-  bird: "assets/bird.png",
-  monkey: "assets/monkey.png",
-  elephant: "assets/elephant.png",
-  turtle: "assets/turtle.png",
+  lion: loadImage("assets/lion.png"),
+  bird: loadImage("assets/bird.png"),
+  monkey: loadImage("assets/monkey.png"),
+  elephant: loadImage("assets/elephant.png"),
+  turtle: loadImage("assets/turtle.png"),
 };
 
 // =====================
-// GAME DATA (FATHA SET)
+// GAME DATA
 // =====================
 const levels = [
   { text: "جَ", sound: "ja", animal: "lion" },
@@ -39,7 +44,7 @@ let target = null;
 let selected = 0;
 
 // =====================
-// AUDIO (NO FILES NEEDED)
+// AUDIO
 // =====================
 function speak(text) {
   const msg = new SpeechSynthesisUtterance(text);
@@ -66,7 +71,7 @@ function nextRound() {
 }
 
 // =====================
-// INPUT (TV + MOBILE)
+// INPUT
 // =====================
 window.addEventListener("keydown", (e) => {
   if (e.key === "ArrowLeft") {
@@ -85,7 +90,7 @@ window.addEventListener("keydown", (e) => {
 canvas.addEventListener("click", check);
 
 // =====================
-// CHECK ANSWER
+// CHECK
 // =====================
 function check() {
   const choice = options[selected];
@@ -100,27 +105,33 @@ function check() {
 }
 
 // =====================
-// RENDER LOOP
+// RENDER
 // =====================
 function drawBackground() {
   if (bg.complete) {
     ctx.drawImage(bg, 0, 0, canvas.width, canvas.height);
+  } else {
+    ctx.fillStyle = "#87CEEB";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
 }
 
 function drawAnimal() {
-  const img = new Image();
-  img.src = animals[target?.animal || "lion"];
+  if (!target) return;
+
+  const img = animals[target.animal];
 
   const size = Math.min(canvas.width, canvas.height) * 0.35;
 
-  ctx.drawImage(
-    img,
-    canvas.width / 2 - size / 2,
-    canvas.height * 0.25,
-    size,
-    size
-  );
+  if (img && img.complete) {
+    ctx.drawImage(
+      img,
+      canvas.width / 2 - size / 2,
+      canvas.height * 0.25,
+      size,
+      size
+    );
+  }
 }
 
 function drawOptions() {
@@ -130,13 +141,11 @@ function drawOptions() {
     const x = center + (i - 1) * 180;
     const y = canvas.height * 0.75;
 
-    // circle
     ctx.beginPath();
     ctx.arc(x, y, i === selected ? 70 : 60, 0, Math.PI * 2);
     ctx.fillStyle = i === selected ? "#FFD54F" : "#ffffff";
     ctx.fill();
 
-    // text
     ctx.fillStyle = "#000";
     ctx.font = "50px Arial";
     ctx.textAlign = "center";
@@ -155,7 +164,7 @@ function loop() {
 }
 
 // =====================
-// START GAME
+// START
 // =====================
 nextRound();
 loop();
