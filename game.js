@@ -15,14 +15,14 @@ const bg = new Image();
 bg.src = "assets/zoo-bg.jpg";
 
 // =====================
-// GAME DATA
+// LETTERS (FATHA SET)
 // =====================
 const levels = [
-  { text: "جَ", sound: "ja", animal: "lion", emoji: "🦁" },
-  { text: "دَ", sound: "da", animal: "bird", emoji: "🐦" },
-  { text: "سَ", sound: "sa", animal: "monkey", emoji: "🐒" },
-  { text: "عَ", sound: "a", animal: "elephant", emoji: "🐘" },
-  { text: "لَ", sound: "la", animal: "turtle", emoji: "🐢" }
+  { text: "جَ", sound: "ja" },
+  { text: "دَ", sound: "da" },
+  { text: "سَ", sound: "sa" },
+  { text: "عَ", sound: "a" },
+  { text: "لَ", sound: "la" }
 ];
 
 // =====================
@@ -32,25 +32,30 @@ let options = [];
 let target = null;
 let selected = 0;
 
-let particles = [];
-let glow = 0;
+let cages = [0, 0, 0, 0, 0]; // 0 = locked, 1 = open
+let progress = 0;
+
+let rewardAnimal = null;
+let rewardTimer = 0;
 
 // =====================
-// AUDIO (POLISHED)
+// ANIMALS (REWARD SYSTEM)
+// =====================
+const rewardAnimals = ["🦁", "🐒", "🐦", "🐘", "🐢"];
+
+// =====================
+// AUDIO
 // =====================
 function speak(text, mood = "normal") {
   const msg = new SpeechSynthesisUtterance(text);
   msg.lang = "ar-SA";
 
-  if (mood === "intro") {
-    msg.rate = 0.65;
-    msg.pitch = 1.4;
-  } else if (mood === "success") {
+  if (mood === "success") {
     msg.rate = 0.85;
     msg.pitch = 1.7;
   } else {
     msg.rate = 0.75;
-    msg.pitch = 1.5;
+    msg.pitch = 1.4;
   }
 
   speechSynthesis.cancel();
@@ -64,57 +69,21 @@ function shuffle(arr) {
   return arr.sort(() => Math.random() - 0.5);
 }
 
-// =====================
-// PARTICLES (SPARKLE EFFECT)
-// =====================
-function spawnParticles(x, y) {
-  for (let i = 0; i < 18; i++) {
-    particles.push({
-      x,
-      y,
-      vx: (Math.random() - 0.5) * 6,
-      vy: (Math.random() - 0.5) * 6,
-      life: 60
-    });
-  }
-}
-
-function updateParticles() {
-  particles.forEach(p => {
-    p.x += p.vx;
-    p.y += p.vy;
-    p.life--;
-  });
-
-  particles = particles.filter(p => p.life > 0);
-}
-
-function drawParticles() {
-  ctx.fillStyle = "rgba(255,255,255,0.9)";
-  particles.forEach(p => {
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
-    ctx.fill();
-  });
+function randomReward() {
+  return rewardAnimals[Math.floor(Math.random() * rewardAnimals.length)];
 }
 
 // =====================
-// GAME FLOW
+// ROUND SYSTEM
 // =====================
 function nextRound() {
   options = shuffle([...levels]).slice(0, 3);
   target = options[Math.floor(Math.random() * options.length)];
   selected = 0;
 
-  glow = 1;
-
   setTimeout(() => {
-    speak("Listen carefully", "intro");
-
-    setTimeout(() => {
-      speak(target.sound, "intro");
-    }, 700);
-
+    speak("Listen");
+    setTimeout(() => speak(target.sound), 600);
   }, 400);
 }
 
@@ -137,10 +106,15 @@ function check() {
   if (!choice || !target) return;
 
   if (choice.text === target.text) {
-    speak("Yes! " + choice.sound, "success");
+    speak(choice.sound, "success");
 
-    glow = 1;
-    spawnParticles(canvas.width / 2, canvas.height * 0.35);
+    // unlock cage
+    if (progress < cages.length) {
+      cages[progress] = 1;
+      rewardAnimal = randomReward();
+      rewardTimer = 80;
+      progress++;
+    }
 
     setTimeout(nextRound, 1200);
   } else {
@@ -155,54 +129,28 @@ function drawBackground() {
   if (bg.complete) {
     ctx.drawImage(bg, 0, 0, canvas.width, canvas.height);
   } else {
-    ctx.fillStyle = "#6EC6FF";
+    ctx.fillStyle = "#7ec8ff";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
 
-  // soft overlay (makes UI pop)
-  ctx.fillStyle = "rgba(0,0,0,0.08)";
+  ctx.fillStyle = "rgba(0,0,0,0.1)";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
 // =====================
-// DRAW ANIMAL
-// =====================
-function drawAnimal() {
-  if (!target) return;
-
-  const bounce = Math.sin(Date.now() * 0.003) * 12;
-  const scale = 120 + glow * 20;
-
-  ctx.font = scale + "px Arial";
-  ctx.textAlign = "center";
-
-  ctx.fillText(
-    target.emoji,
-    canvas.width / 2,
-    canvas.height * 0.32 + bounce
-  );
-}
-
-// =====================
-// DRAW OPTIONS (MAGIC STONES)
+// DRAW OPTIONS
 // =====================
 function drawOptions() {
   const center = canvas.width / 2;
 
   options.forEach((opt, i) => {
     const x = center + (i - 1) * 200;
-    const y = canvas.height * 0.75;
-
-    // glow effect
-    ctx.shadowBlur = i === selected ? 25 : 10;
-    ctx.shadowColor = "#FFD54F";
+    const y = canvas.height * 0.65;
 
     ctx.beginPath();
     ctx.arc(x, y, i === selected ? 80 : 70, 0, Math.PI * 2);
-    ctx.fillStyle = i === selected ? "#FFD54F" : "#FFFFFF";
+    ctx.fillStyle = i === selected ? "#FFD54F" : "#fff";
     ctx.fill();
-
-    ctx.shadowBlur = 0;
 
     ctx.fillStyle = "#000";
     ctx.font = "60px Arial";
@@ -212,17 +160,61 @@ function drawOptions() {
 }
 
 // =====================
+// DRAW CAGES (REWARD TRACK)
+// =====================
+function drawCages() {
+  const startX = canvas.width / 2 - 300;
+  const y = canvas.height * 0.85;
+
+  for (let i = 0; i < cages.length; i++) {
+    const x = startX + i * 150;
+
+    // cage base
+    ctx.fillStyle = cages[i] ? "#b9f6ca" : "#ddd";
+    ctx.fillRect(x, y, 100, 80);
+
+    ctx.strokeStyle = "#333";
+    ctx.strokeRect(x, y, 100, 80);
+
+    // lock icon
+    ctx.fillStyle = "#000";
+    ctx.font = "30px Arial";
+    ctx.textAlign = "center";
+
+    ctx.fillText(cages[i] ? "🐾" : "🔒", x + 50, y + 50);
+  }
+}
+
+// =====================
+// DRAW REWARD ANIMAL
+// =====================
+function drawReward() {
+  if (rewardTimer <= 0 || !rewardAnimal) return;
+
+  ctx.font = "120px Arial";
+  ctx.textAlign = "center";
+
+  const bounce = Math.sin(Date.now() * 0.01) * 10;
+
+  ctx.fillText(
+    rewardAnimal,
+    canvas.width / 2,
+    canvas.height * 0.25 + bounce
+  );
+
+  rewardTimer--;
+}
+
+// =====================
 // LOOP
 // =====================
 function loop() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   drawBackground();
-  drawAnimal();
+  drawReward();
   drawOptions();
-  drawParticles();
-
-  updateParticles();
+  drawCages();
 
   requestAnimationFrame(loop);
 }
