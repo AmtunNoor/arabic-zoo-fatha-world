@@ -10,7 +10,7 @@ const CONFIG = {
   baseTargetWidth: 1920,   
   baseTargetHeight: 1080,  
   colors: {
-    selected: "#FFD54F",   // Soft gold highlight from design doc
+    selected: "#FFD54F",   // Soft gold highlight from design doc [cite: 3]
     unselected: "#FFFFFF",
     stroke: "#FF9800",
     text: "#1A1A1A"
@@ -24,9 +24,7 @@ let state = {
   currentIndex: 0,
   options: [],
   target: null,
-  selected: 1, // Start on middle button for balanced TV/Keyboard layout
-  floatingReward: null,
-  rewardTimer: 0,
+  selected: 1, // Start on middle button for balanced TV/Keyboard layout [cite: 3, 4]
   shake: 0,
   pulseTimer: 0
 };
@@ -55,16 +53,17 @@ const assets = {
 const animalKeys = Object.keys(assets.animals);
 
 // =====================
-// CAGES CONFIG (WORLD SPACE)
+// CAGES CONFIG (WORLD SPACE WITH LOCAL ANIMAL STATES)
 // =====================
 const cages = state.letters.map((l, i) => ({
   id: i,
   letter: l,
   x: 500 + i * CONFIG.cageSpacing,
-  y: 380, // Positioned safely within background sightlines
+  y: 420, // Positioned safely within background ground lines
   unlocked: false,
   shake: 0,
-  reward: null
+  rewardAnimal: null,
+  rewardTimer: 0 // Track timers per cage locally
 }));
 
 // =====================
@@ -75,14 +74,13 @@ function resize() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
   
-  // Responsive factor to handle mobile vs wide TV screen views cleanly
   scale = Math.min(canvas.width / CONFIG.baseTargetWidth, canvas.height / CONFIG.baseTargetHeight);
   if (scale < 0.45) scale = 0.45; 
 }
 window.addEventListener("resize", resize);
 resize();
 
-// Safe UI Rounded Container Renderer (Guarantees zero browser loop crashes)
+// Safe UI Rounded Container Generator
 function drawUIFrame(x, y, width, height, radius, fillStyle, strokeStyle, lineWidth) {
   ctx.beginPath();
   ctx.moveTo(x + radius, y);
@@ -132,7 +130,7 @@ function nextRound() {
 }
 
 function check() {
-  if (state.currentIndex >= cages.length) return; // End of level safety check
+  if (state.currentIndex >= cages.length) return; 
   
   const choice = state.options[state.selected];
   if (!choice || !state.target) return;
@@ -140,14 +138,13 @@ function check() {
   if (choice === state.target) {
     const cage = cages[state.currentIndex];
     cage.unlocked = true;
-    cage.reward = animalKeys[Math.floor(Math.random() * animalKeys.length)];
+    cage.rewardAnimal = animalKeys[Math.floor(Math.random() * animalKeys.length)]; // Random emotional reinforcement [cite: 2, 4]
+    cage.rewardTimer = 90; // Initialize reward exit runtime length
     cage.shake = 15;
 
-    state.floatingReward = cage.reward;
-    state.rewardTimer = 90;
     state.currentIndex++;
     
-    setTimeout(nextRound, 1200);
+    setTimeout(nextRound, 1400);
   } else {
     state.shake = -8; 
     speak("try again");
@@ -159,7 +156,6 @@ function check() {
 // =====================
 function drawBackground() {
   if (assets.bg.complete) {
-    // Parallax factor: Moves background slower than camera to build pseudo-3D world depth
     const parallaxX = -state.cameraX * 0.3;
     const imgWidth = canvas.height * (assets.bg.width / assets.bg.height);
     
@@ -171,61 +167,82 @@ function drawBackground() {
   }
 }
 
-function drawCages() {
+function drawCagesAndRewards() {
   for (let cage of cages) {
-    let x = (cage.x * scale) - state.cameraX;
-    let y = cage.y * scale;
+    let baseWorldX = cage.x * scale;
+    let baseWorldY = cage.y * scale;
 
-    if (x < -300 || x > canvas.width + 300) continue;
+    let renderX = baseWorldX - state.cameraX;
+    let renderY = baseWorldY;
 
-    // Apply soft breathing motion to active cages for premium polish feel
+    if (renderX < -300 || renderX > canvas.width + 300) continue;
+
+    // Apply smooth breathing motion to active locked cages [cite: 3, 4]
     if (!cage.unlocked && cage.id === state.currentIndex) {
-      y += Math.sin(state.pulseTimer * 0.05) * (6 * scale);
+      renderY += Math.sin(state.pulseTimer * 0.05) * (6 * scale);
     }
 
-    ctx.save();
-
+    // Dynamic procedural cage shake offset
+    let activeShakeX = 0;
     if (cage.shake > 0) {
-      ctx.translate(x + Math.sin(Date.now() * 0.08) * cage.shake, y);
+      activeShakeX = Math.sin(Date.now() * 0.08) * cage.shake;
       cage.shake *= 0.9;
-    } else {
-      ctx.translate(x, y);
     }
 
+    const cageSize = 260 * scale;
+
+    // 1. DRAW ANIMAL RISING OUT FROM INSIDE THE OPENED CAGE 
+    if (cage.unlocked && cage.rewardAnimal && cage.rewardTimer > 0) {
+      const animalImg = assets.animals[cage.rewardAnimal];
+      if (animalImg && animalImg.complete) {
+        ctx.save();
+        
+        // Calculate release progression (0.0 at trigger -> 1.0 near complete)
+        const progress = (90 - cage.rewardTimer) / 90;
+        
+        // Design animation specification: appear -> bounce -> exit scene 
+        // Upward vertical emergence offset out from the cage door line
+        let animalOffsetY = -130 * scale * Math.sin(progress * Math.PI);
+        
+        // Add subtle mid-air bounce rhythm
+        let animalBounceY = Math.sin(state.pulseTimer * 0.1) * (10 * scale);
+        
+        let finalAnimalX = renderX + activeShakeX;
+        let finalAnimalY = renderY + animalOffsetY + animalBounceY;
+        const animalSize = 200 * scale;
+
+        // Apply clean opacity fadeout as the animal exits the scene 
+        if (cage.rewardTimer < 25) {
+          ctx.globalAlpha = cage.rewardTimer / 25;
+        }
+
+        ctx.drawImage(
+          animalImg, 
+          finalAnimalX - animalSize / 2, 
+          finalAnimalY - animalSize / 2, 
+          animalSize, 
+          animalSize
+        );
+        ctx.restore();
+      }
+      cage.rewardTimer--;
+    }
+
+    // 2. DRAW CAGE FORWARD FOREGROUND LAYER
+    ctx.save();
+    ctx.translate(renderX + activeShakeX, renderY);
+    
     const img = cage.unlocked ? assets.cageOpen : assets.cageClosed;
-    const size = 260 * scale;
-
     if (img.complete) {
-      ctx.drawImage(img, -size / 2, -size / 2, size, size);
+      ctx.drawImage(img, -cageSize / 2, -cageSize / 2, cageSize, cageSize);
     }
-
     ctx.restore();
   }
 }
 
-function drawRewardAnimation() {
-  if (state.rewardTimer <= 0 || !state.floatingReward) return;
-
-  const img = assets.animals[state.floatingReward];
-  if (!img || !img.complete) return;
-
-  const size = 280 * scale;
-  const x = canvas.width / 2 - size / 2;
-  
-  // Animation bounce sequence directly relative to state timers
-  const bounceY = (canvas.height * 0.22) + Math.sin(state.pulseTimer * 0.08) * (15 * scale);
-
-  ctx.save();
-  if (state.rewardTimer < 25) ctx.globalAlpha = state.rewardTimer / 25; // Gentle fadeout
-  ctx.drawImage(img, x, bounceY, size, size);
-  ctx.restore();
-
-  state.rewardTimer--;
-}
-
 function drawUIOptions() {
   const center = canvas.width / 2;
-  const uiY = canvas.height * 0.82; // Locked to bottom overlay safe-zones across landscape/portrait
+  const uiY = canvas.height * 0.82; 
   const btnW = 240 * scale;
   const btnH = 135 * scale;
   const spacing = 290 * scale;
@@ -234,19 +251,17 @@ function drawUIOptions() {
     const x = center + (i - 1) * spacing;
     const isSel = i === state.selected;
     
-    // Breathing animation expansion for selected token item
     const pulseFactor = isSel ? Math.sin(state.pulseTimer * 0.07) * (6 * scale) : 0;
     const currentW = btnW + pulseFactor;
     const currentH = btnH + pulseFactor;
 
     ctx.save();
     
-    // Premium soft glow accent separation on item focus
+    // Soft focus item accent glow layer [cite: 3, 4]
     ctx.shadowColor = isSel ? "rgba(255, 152, 0, 0.45)" : "rgba(0, 0, 0, 0.15)";
     ctx.shadowBlur = isSel ? 30 * scale : 12 * scale;
     ctx.shadowOffsetY = 6 * scale;
 
-    // Interface Container Card
     drawUIFrame(
       x - currentW / 2, 
       uiY - currentH / 2, 
@@ -258,12 +273,10 @@ function drawUIOptions() {
       isSel ? 5 * scale : 2 * scale
     );
 
-    // Text rendering context layer overrides
     ctx.shadowBlur = 0; 
     ctx.shadowOffsetY = 0;
     ctx.fillStyle = CONFIG.colors.text;
     
-    // Font setup utilizing clean fallback cascades
     ctx.font = `bold ${72 * scale}px "Baloo 2", Arial, sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -280,22 +293,21 @@ function loop() {
   state.pulseTimer++;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Smooth camera track algorithm matching your original speed step defaults
+  // Candy Crush Camera Easing: follows the active world track position smoothly [cite: 2, 3, 4]
   if (state.currentIndex < cages.length) {
     const idealWorldX = (cages[state.currentIndex].x * scale) - (canvas.width / 2);
     state.cameraX += (idealWorldX - state.cameraX) * 0.07;
   }
 
   drawBackground();
-  drawCages();
-  drawRewardAnimation();
+  drawCagesAndRewards();
   drawUIOptions();
 
   requestAnimationFrame(loop);
 }
 
 // =====================
-// INPUT MAPS (STRICTLY KEYBOARD/TV + TOUCH)
+// INPUT MAPS (STRICTLY KEYBOARD/TV + TOUCH) [cite: 3, 4]
 // =====================
 window.addEventListener("keydown", (e) => {
   if (e.key === "ArrowLeft") state.selected = Math.max(0, state.selected - 1);
